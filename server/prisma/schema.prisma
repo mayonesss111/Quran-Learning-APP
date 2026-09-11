@@ -1,0 +1,173 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum StatusHafalan {
+  BELUM
+  PROSES
+  HAFAL
+}
+
+enum LevelMateri {
+  DASAR
+  MENENGAH
+  LANJUTAN
+}
+
+// ------------------------------------------------------
+// 1. PROFIL MAHASISWA & USER
+// ------------------------------------------------------
+model Profile {
+  id        String   @id @default(uuid())
+  userId    String   @unique // ID User dari Supabase Auth
+  nama      String
+  nim       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  hafalanList     HafalanTarget[]
+  quizResults     QuizResult[]
+  progress        LearningProgress[]
+  bookmarkDoa     UserDoaBookmark[]
+  historyLatihan  TahsinLog[]
+
+  @@map("profiles")
+}
+
+// ------------------------------------------------------
+// 2. TAJWID, TAHSIN & KUIS INTERAKTIF
+// ------------------------------------------------------
+model MateriTajwid {
+  id          String      @id @default(uuid())
+  judul       String      // Contoh: "Izhar Halqi", "Qalqalah Sugra"
+  kategori    String      // "NUN_MATI", "MIM_MATI", "MAD", "QALQALAH"
+  deskripsi   String      @db.Text
+  caraBaca    String      @db.Text
+  contohAyat  String      // Teks Arab contoh
+  audioContoh String?     // URL audio contoh makhraj/bacaan
+  level       LevelMateri @default(DASAR)
+
+  quizzes     QuizQuestion[]
+
+  @@map("materi_tajwid")
+}
+
+model QuizQuestion {
+  id             String       @id @default(uuid())
+  materiTajwidId String?
+  pertanyaan     String       @db.Text
+  pilihanJawaban Json         // Array pilihan jawaban: ["A", "B", "C", "D"]
+  jawabanBenar   Int          // Index jawaban yang benar (0-3)
+  pembahasan     String?      @db.Text
+
+  materiTajwid   MateriTajwid? @relation(fields: [materiTajwidId], references: [id], onDelete: SetNull)
+
+  @@map("quiz_questions")
+}
+
+model QuizResult {
+  id             String   @id @default(uuid())
+  profileId      String
+  quizCategory   String   // Contoh: "Tajwid-Izhar", "Evaluasi-Umum"
+  score          Int
+  totalQuestions Int
+  correctAnswers Int
+  createdAt      DateTime @default(now())
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("quiz_results")
+}
+
+model TahsinLog {
+  id          String   @id @default(uuid())
+  profileId   String
+  huruf       String   // Contoh: "Ain", "Ghoin", "Rha"
+  catatan     String?  // Catatan makharijul huruf
+  sudahLatihan Boolean @default(false)
+  updatedAt   DateTime @updatedAt
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("tahsin_logs")
+}
+
+// ------------------------------------------------------
+// 3. HAFALAN & TILAWAH (TARGET BELAJAR)
+// ------------------------------------------------------
+model HafalanTarget {
+  id          String        @id @default(uuid())
+  profileId   String
+  surahNumber Int
+  startAyat   Int           @default(1)
+  endAyat     Int
+  status      StatusHafalan @default(BELUM)
+  catatan     String?       @db.Text
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("hafalan_targets")
+}
+
+model LearningProgress {
+  id              String   @id @default(uuid())
+  profileId       String
+  lastSurah       Int      @default(1)
+  lastAyat        Int      @default(1)
+  targetMembaca   Int      @default(1) // Target lembar/ayat per hari
+  completedTajwid String[] // Array ID materi tajwid yang selesai
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  profile Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@map("learning_progress")
+}
+
+// ------------------------------------------------------
+// 4. DOA, AYAT PILIHAN & TEMA KEHIDUPAN
+// ------------------------------------------------------
+model DoaPilihan {
+  id          String            @id @default(uuid())
+  judul       String            // Contoh: "Doa Sebelum Belajar"
+  kategori    String            // "SEHARI_HARI", "BELAJAR", "IBADAH"
+  teksArab    String            @db.Text
+  latin       String            @db.Text
+  terjemahan  String            @db.Text
+  audioUrl    String?
+
+  bookmarks   UserDoaBookmark[]
+
+  @@map("doa_pilihan")
+}
+
+model AyatTematik {
+  id          String   @id @default(uuid())
+  tema        String   // Contoh: "Sabur & Ujian", "Menuntut Ilmu"
+  deskripsi   String?  @db.Text
+  surahNumber Int
+  ayatNumber  Int
+  penjelasan  String   @db.Text // Hubungan ayat dengan kehidupan sehari-hari
+
+  @@map("ayat_tematik")
+}
+
+model UserDoaBookmark {
+  id        String     @id @default(uuid())
+  profileId String
+  doaId     String
+
+  profile Profile    @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  doa     DoaPilihan @relation(fields: [doaId], references: [id], onDelete: Cascade)
+
+  @@unique([profileId, doaId])
+  @@map("user_doa_bookmarks")
+}
